@@ -35,5 +35,5 @@ A web-based real-time dashboard that monitors live traffic data and prioritizes 
 
 ### 2️⃣ Clone the Repository
 ```bash
-git clone <(https://github.com/Khushii-24/SIH-PROJECT_.git)>
+git clone <(https://github.com/Khushii-24/Smart-Traffic-Control-Dashboard.git))>
 cd <REPO_DIRECTORY>
