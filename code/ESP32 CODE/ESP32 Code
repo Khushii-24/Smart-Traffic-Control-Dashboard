@@ -1,0 +1,275 @@
+const int LED_RED = 23;
+const int LED_YELLOW = 22;
+const int LED_GREEN = 21;
+const int LED_BLUE = 19;
+
+const int BTN_RFID = 25;
+const int BTN_SIREN = 26;
+
+const int TRIG = 16;
+const int ECHO = 17;
+
+enum State { NORMAL, PREEMPT_ACTIVE, RECOVERING };
+State currentState = NORMAL;
+
+const unsigned long NORMAL_GREEN_TIME = 5000;
+const unsigned long NORMAL_YELLOW_TIME = 2000;
+const unsigned long NORMAL_RED_TIME = 2000;
+
+const unsigned long PREEMPT_HOLD_TIME = 5000;
+const unsigned long RECOVER_YELLOW_TIME = 2000;
+const unsigned long RECOVER_RED_TIME = 1000;
+
+const int DISTANCE_THRESHOLD = 30;
+const unsigned long FAILSAFE_TIMEOUT = 10000;
+
+unsigned long stateStartTime = 0;
+unsigned long phaseStartTime = 0;
+int normalPhase = 0;
+bool rfidArmed = false;
+unsigned long lastActivity = 0;
+
+bool prevRfidState = true; 
+bool prevSirenState = true;
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n=== TRAFFIC LIGHT CONTROLLER ===");
+  
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_YELLOW, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+  
+  pinMode(BTN_RFID, INPUT_PULLUP);
+  pinMode(BTN_SIREN, INPUT_PULLUP);
+  
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+  
+  setLights(false, false, false, false);
+  
+  currentState = NORMAL;
+  normalPhase = 0;
+  phaseStartTime = millis();
+  stateStartTime = millis();
+  lastActivity = millis();
+  rfidArmed = false;
+  
+  prevRfidState = digitalRead(BTN_RFID);
+  prevSirenState = digitalRead(BTN_SIREN);
+
+  Serial.println("\nTesting button readings...");
+  for (int i = 0; i < 5; i++) {
+    bool rfid = (digitalRead(BTN_RFID) == LOW);
+    bool siren = (digitalRead(BTN_SIREN) == LOW);
+    Serial.print("Test "); Serial.print(i+1); Serial.print(": RFID=");
+    Serial.print(rfid ? "PRESSED" : "released");
+    Serial.print(", SIREN="); Serial.println(siren ? "PRESSED" : "released");
+    delay(500);
+  }
+}
+
+void loop() {
+  unsigned long now = millis();
+  
+  bool rfidCurrentState = (digitalRead(BTN_RFID) == LOW);
+  bool sirenCurrentState = (digitalRead(BTN_SIREN) == LOW);
+  
+  bool rfidPressed = (!prevRfidState) && rfidCurrentState;  // Was high, now low
+  bool sirenPressed = (!prevSirenState) && sirenCurrentState;
+  
+  prevRfidState = rfidCurrentState;
+  prevSirenState = sirenCurrentState;
+  
+  long distance = getDistance();
+  
+  if (rfidCurrentState) {
+    Serial.println("RFID BUTTON IS PRESSED");
+  }
+  if (sirenCurrentState) {
+    Serial.println("SIREN BUTTON IS PRESSED");
+  }
+  
+  if (rfidCurrentState || sirenCurrentState || (distance > 0 && distance < 200)) {
+    lastActivity = now;
+  }
+  
+  if (rfidPressed) {
+    rfidArmed = true;
+    Serial.println("*** RFID BUTTON PRESSED - SYSTEM IS NOW ARMED! ***");
+    Serial.println("*** GREEN LED SHOULD FLASH TO CONFIRM ***");
+    
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(LED_GREEN, HIGH);
+      delay(200);
+      digitalWrite(LED_GREEN, LOW);
+      delay(200);
+    }
+  }
+  
+  static unsigned long lastStatusPrint = 0;
+  if (now - lastStatusPrint > 1000) {
+    printDetailedStatus(rfidCurrentState, sirenCurrentState, distance);
+    lastStatusPrint = now;
+  }
+  
+  if (now - lastActivity > FAILSAFE_TIMEOUT && currentState != NORMAL) {
+    Serial.println(" No activity - returning to NORMAL");
+    enterNormal();
+  }
+  
+  switch (currentState) {
+    case NORMAL:
+      runNormalState(now, sirenPressed, distance);
+      break;
+      
+    case PREEMPT_ACTIVE:
+      runPreemptState(now);
+      break;
+      
+    case RECOVERING:
+      runRecoverState(now);
+      break;
+  }
+  
+  delay(100);
+}
+
+void runNormalState(unsigned long now, bool sirenPressed, long distance) {
+  switch (normalPhase) {
+    case 0: 
+      setLights(false, false, true, false);
+      if (now - phaseStartTime >= NORMAL_GREEN_TIME) {
+        normalPhase = 1;
+        phaseStartTime = now;
+        Serial.println("Traffic: GREEN -> YELLOW");
+      }
+      break;
+      
+    case 1: 
+      setLights(false, true, false, false);
+      if (now - phaseStartTime >= NORMAL_YELLOW_TIME) {
+        normalPhase = 2;
+        phaseStartTime = now;
+        Serial.println("Traffic: YELLOW -> RED");
+      }
+      break;
+      
+    case 2: 
+      setLights(true, false, false, false);
+      if (now - phaseStartTime >= NORMAL_RED_TIME) {
+        normalPhase = 0;
+        phaseStartTime = now;
+        Serial.println("Traffic: RED -> GREEN");
+      }
+      break;
+  }
+  
+  if (rfidArmed && distance > 0 && distance < DISTANCE_THRESHOLD && sirenPressed) {
+    Serial.println("*** PREEMPT TRIGGERED! ***");
+    Serial.println("*** BLUE LIGHT SHOULD NOW BE ON! ***");
+    enterPreempt();
+  }
+}
+
+void runPreemptState(unsigned long now) {
+  setLights(false, false, true, true);  // Green + Blue ON
+  
+  if (now - stateStartTime >= PREEMPT_HOLD_TIME) {
+    Serial.println("Preempt complete -> Recovery");
+    enterRecover();
+  }
+}
+
+void runRecoverState(unsigned long now) {
+  unsigned long elapsed = now - stateStartTime;
+  
+  if (elapsed < RECOVER_YELLOW_TIME) {
+    setLights(false, true, false, false);  // Yellow
+  }
+  else if (elapsed < RECOVER_YELLOW_TIME + RECOVER_RED_TIME) {
+    setLights(true, false, false, false);  // Red
+  }
+  else {
+    Serial.println("Recovery complete -> Normal cycle");
+    enterNormal();
+  }
+}
+
+void enterPreempt() {
+  currentState = PREEMPT_ACTIVE;
+  stateStartTime = millis();
+}
+
+void enterRecover() {
+  currentState = RECOVERING;
+  stateStartTime = millis();
+}
+
+void enterNormal() {
+  currentState = NORMAL;
+  normalPhase = 0;
+  phaseStartTime = millis();
+  stateStartTime = millis();
+  rfidArmed = false;
+}
+
+void setLights(bool red, bool yellow, bool green, bool blue) {
+  digitalWrite(LED_RED, red ? HIGH : LOW);
+  digitalWrite(LED_YELLOW, yellow ? HIGH : LOW);
+  digitalWrite(LED_GREEN, green ? HIGH : LOW);
+  digitalWrite(LED_BLUE, blue ? HIGH : LOW);
+}
+
+long getDistance() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+  
+  unsigned long duration = pulseIn(ECHO, HIGH, 30000);
+  if (duration == 0) return -1;
+  
+  return duration * 0.034 / 2;
+}
+
+void printDetailedStatus(bool rfidHeld, bool sirenHeld, long distance) {
+  Serial.print(">>> State: ");
+  switch(currentState) {
+    case NORMAL:
+      Serial.print("NORMAL-");
+      switch(normalPhase) {
+        case 0: Serial.print("GREEN"); break;
+        case 1: Serial.print("YELLOW"); break;
+        case 2: Serial.print("RED"); break;
+      }
+      break;
+    case PREEMPT_ACTIVE: Serial.print("PREEMPT_ACTIVE"); break;
+    case RECOVERING: Serial.print("RECOVERING"); break;
+  }
+  
+  Serial.print(" | ARMED: "); 
+  Serial.print(rfidArmed ? "YES" : "NO");
+  
+  Serial.print(" | RFID button: ");
+  Serial.print(rfidHeld ? "PRESSED" : "released");
+  
+  Serial.print(" | SIREN button: ");
+  Serial.print(sirenHeld ? "PRESSED" : "released");
+  
+  Serial.print(" | Distance: ");
+  Serial.print(distance);
+  Serial.println("cm");
+  
+  // Additional debugging
+  if (rfidArmed) {
+    Serial.println("    >>> SYSTEM IS ARMED - waiting for distance < 30cm + siren press");
+  }
+  
+  if (distance > 0 && distance < DISTANCE_THRESHOLD) {
+    Serial.print("    >>> Object detected within threshold! Distance: ");
+    Serial.print(distance); Serial.println("cm");
+  }
+}

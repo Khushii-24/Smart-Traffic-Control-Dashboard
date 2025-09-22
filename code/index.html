@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Smart Traffic Dashboard — Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Tailwind CDN (for demo). In real project, use Tailwind build pipeline -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Tailwind config via CDN */
+      :root {
+        --signal-green: #2ecc71;
+        --signal-red: #e74c3c;
+        --signal-amber: #f1c40f;
+        --ambulance-blue: #3498db;
+        --bg-dark: #1c1c1c;
+        --bg-light: #f5f5f5;
+      }
+      /* Header shimmer */
+      @keyframes shimmerGrad {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
+      }
+      /* Soft pulse for bulbs */
+      @keyframes glowPulse {
+        0% {
+          box-shadow: 0 0 0px rgba(0, 0, 0, 0);
+        }
+        50% {
+          box-shadow: 0 0 24px var(--glow-color, rgba(0, 0, 0, 0.4));
+        }
+        100% {
+          box-shadow: 0 0 0px rgba(0, 0, 0, 0);
+        }
+      }
+      .animate-glow {
+        animation: glowPulse 1.6s ease-in-out infinite;
+      }
+      .ring-ambulance {
+        box-shadow: 0 0 0 6px rgba(52, 152, 219, 0.25);
+      }
+      .map-tile {
+  border-radius: 0.5rem;       /* optional rounded corners */
+  overflow: hidden;            /* ensure iframe doesn't overflow */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+      /* .map-tile {
+  background-image: url("https://static-maps.yandex.ru/1.x/?ll=77.2090,28.6139&size=600,400&z=12&l=map&pt=77.2090,28.6139,pm2rdm");
+
+  background-color: #e5e5e5;
+  
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  border-radius: 0.5rem; 
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+} */
+      .scroll-smooth::-webkit-scrollbar {
+        width: 10px;
+      }
+      .scroll-smooth::-webkit-scrollbar-thumb {
+        background: #d4d4d4;
+        border-radius: 8px;
+      }
+      .badge {
+        padding: 2px 10px;
+        border-radius: 9999px;
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .badge-green {
+        background: rgba(46, 204, 113, 0.15);
+        color: #1e7f4f;
+        border: 1px solid rgba(46, 204, 113, 0.4);
+      }
+      .badge-amber {
+        background: rgba(241, 196, 15, 0.15);
+        color: #7a6306;
+        border: 1px solid rgba(241, 196, 15, 0.4);
+      }
+      .badge-red {
+        background: rgba(231, 76, 60, 0.15);
+        color: #7c231b;
+        border: 1px solid rgba(231, 76, 60, 0.4);
+      }
+      .badge-blue {
+        background: rgba(52, 152, 219, 0.15);
+        color: #186aa1;
+        border: 1px solid rgba(52, 152, 219, 0.4);
+      }
+      .card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+      }
+      .kpi {
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .route-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+      }
+      .dot-green {
+        background: #2ecc71;
+        box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.2);
+      }
+      .dot-red {
+        background: #e74c3c;
+        box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2);
+      }
+      .dot-amber {
+        background: #f1c40f;
+        box-shadow: 0 0 0 3px rgba(241, 196, 15, 0.2);
+      }
+      .nav-active {
+        border-left: 4px solid var(--signal-green);
+        background: rgba(46, 204, 113, 0.08);
+      }
+    </style>
+    <script>
+      // Tailwind customization via CDN setup
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'signal-green': '#2ECC71',
+              'signal-red': '#E74C3C',
+              'signal-amber': '#F1C40F',
+              'ambulance-blue': '#3498DB',
+              'bg-dark': '#1C1C1C',
+              'bg-light': '#F5F5F5',
+            },
+            fontFamily: {
+              sans: ['Poppins', 'ui-sans-serif', 'system-ui'],
+            },
+            backgroundImage: {
+              'header-grad':
+                'linear-gradient(90deg, #2ECC71, #F1C40F, #E74C3C)',
+            },
+            boxShadow: {
+              blueGlow: '0 0 0 8px rgba(52,152,219,0.28)',
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="font-sans bg-[var(--bg-light)] text-[#0f172a]">
+    <!-- App Shell -->
+    <div class="min-h-screen flex">
+      <!-- Sidebar -->
+      <aside
+        class="w-[280px] bg-[var(--bg-dark)] text-white flex flex-col sticky top-0 h-screen"
+      >
+        <div class="p-5 flex items-center gap-3 border-b border-white/10">
+          <div
+            class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"
+          >
+            <!-- Traffic light icon -->
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <rect
+                x="7"
+                y="2"
+                width="10"
+                height="20"
+                rx="3"
+                stroke="#fff"
+                stroke-opacity="0.9"
+              />
+              <circle cx="12" cy="6.2" r="2.1" fill="#E74C3C" />
+              <circle cx="12" cy="12" r="2.1" fill="#F1C40F" />
+              <circle cx="12" cy="17.8" r="2.1" fill="#2ECC71" />
+            </svg>
+          </div>
+          <div>
+            <div class="text-lg font-extrabold tracking-tight">
+              Smart Traffic
+            </div>
+            <div class="text-xs text-white/60 -mt-0.5">Ambulance Priority</div>
+          </div>
+        </div>
+
+        <nav class="p-3 space-y-1">
+          <button
+            data-route="/"
+            class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 transition flex items-center justify-between"
+          >
+            <span class="flex items-center gap-3"
+              ><span class="text-xl">🏠</span> Live Dashboard</span
+            >
+            <span
+              class="override-indicator hidden w-2 h-2 rounded-full bg-[var(--ambulance-blue)]"
+            ></span>
+          </button>
+          <button
+            data-route="/signals"
+            class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 transition flex items-center gap-3"
+          >
+            <span class="text-xl">🚦</span> Signals Management
+          </button>
+          <button
+            data-route="/ambulances"
+            class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 transition flex items-center gap-3"
+          >
+            <span class="text-xl">🚑</span> Ambulance Tracking
+          </button>
+          <button
+            data-route="/admin"
+            class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-white/5 transition flex items-center gap-3"
+          >
+            <span class="text-xl">🛠️</span> Admin Settings
+          </button>
+        </nav>
+
+        <div class="mt-auto p-4 border-t border-white/10">
+          <div class="bg-white/5 rounded-xl p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm">Override Status</div>
+              <div class="flex items-center gap-2">
+                <div
+                  class="w-2 h-2 rounded-full bg-white/30"
+                  id="sidebarOverrideDot"
+                ></div>
+                <div class="text-xs text-white/70" id="sidebarOverrideText">
+                  Idle
+                </div>
+              </div>
+            </div>
+            <div class="mt-3 text-xs text-white/60 leading-relaxed">
+              When an ambulance is near an intersection, priority override glows
+              blue.
+            </div>
+          </div>
+          <div class="text-[11px] text-white/40 text-center mt-3">
+            Demo UI • No real data or tracking
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main -->
+      <div class="flex-1 min-w-0">
+        <!-- Header -->
+        <header class="sticky top-0 z-20">
+          <div
+            class="bg-header-grad bg-[length:200%_200%] text-white"
+            style="animation: shimmerGrad 12s ease infinite"
+          >
+            <div class="px-6 py-4 flex items-center justify-between">
+              <div class="font-extrabold text-xl sm:text-2xl tracking-tight">
+                🚦 Live Traffic Control Dashboard
+              </div>
+              <div class="flex items-center gap-5">
+                <div class="hidden sm:flex items-center gap-2 text-sm">
+                  <span class="opacity-80">Last sync:</span>
+                  <span id="lastSync" class="font-semibold">—</span>
+                </div>
+                <div
+                  id="overrideToast"
+                  class="hidden sm:flex items-center gap-2 bg-white/15 px-3 py-1.5 rounded-full text-sm"
+                >
+                  <span
+                    class="w-2.5 h-2.5 rounded-full bg-[var(--ambulance-blue)] animate-pulse"
+                  ></span>
+                  <span>Ambulance override active</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <div class="text-right hidden sm:block">
+                    <div class="text-xs opacity-80">Signed in</div>
+                    <div class="text-sm font-semibold">Admin</div>
+                  </div>
+                  <div
+                    class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center"
+                  >
+                    <span>👤</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Sub-header KPIs visible only on Dashboard route -->
+          <div
+            id="kpiStrip"
+            class="px-6 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-[var(--bg-light)] border-b border-black/5"
+          >
+            <div class="card p-4 flex items-center justify-between">
+              <div>
+                <div class="text-sm text-slate-500">Active Ambulances</div>
+                <div id="kpiAmbulances" class="kpi text-3xl sm:text-4xl">0</div>
+              </div>
+              <div
+                class="w-11 h-11 rounded-xl bg-ambulance-blue/10 text-ambulance-blue flex items-center justify-center text-xl"
+              >
+                🚑
+              </div>
+            </div>
+            <div class="card p-4 flex items-center justify-between">
+              <div>
+                <div class="text-sm text-slate-500">Signals Online</div>
+                <div id="kpiSignals" class="kpi text-3xl sm:text-4xl">0</div>
+              </div>
+              <div
+                class="w-11 h-11 rounded-xl bg-signal-green/10 text-signal-green flex items-center justify-center text-xl"
+              >
+                🚦
+              </div>
+            </div>
+            <div class="card p-4 flex items-center justify-between">
+              <div>
+                <div class="text-sm text-slate-500">Overrides Active</div>
+                <div id="kpiOverrides" class="kpi text-3xl sm:text-4xl">0</div>
+              </div>
+              <div
+                class="w-11 h-11 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-xl"
+              >
+                ⚡
+              </div>
+            </div>
+          </div>
+          
+        </header>
+       
+        
+        <!-- Content Router -->
+        <main id="routerView" class="p-6"></main>
+        
+      </div>
+    </div>
+
+    <!-- Reusable Modals -->
+    <div
+      id="modalBackdrop"
+      class="hidden fixed inset-0 bg-black/40 z-50 items-end sm:items-center justify-center p-4"
+    >
+      <div
+        id="modalPanel"
+        class="w-full max-w-xl card translate-y-6 opacity-0 transition-all"
+      >
+        <div
+          class="p-5 border-b border-black/5 flex items-center justify-between"
+        >
+          <div class="font-bold" id="modalTitle">Edit</div>
+          <button
+            id="modalClose"
+            class="px-2 py-1 text-slate-500 hover:text-slate-700"
+          >
+            ✕
+          </button>
+        </div>
+        <div id="modalBody" class="p-5"></div>
+        <div
+          class="p-5 border-t border-black/5 flex items-center justify-end gap-3"
+        >
+          <button
+            id="modalCancel"
+            class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200"
+          >
+            Cancel
+          </button>
+          <button
+            id="modalSave"
+            class="px-4 py-2 rounded-lg bg-ambulance-blue text-white hover:brightness-110"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Mock data
+      const signals = [
+        {
+          id: 'S-201',
+          name: 'AIIMS Flyover',
+          status: 'green',
+          emergency: false,
+          heartbeat: Date.now() - 12000,
+          defaultCycle: 90,
+          nextMaint: '2025-09-28',
+          lat: 28.566,
+          lng: 77.21,
+        },
+        {
+          id: 'S-202',
+          name: 'Rajiv Chowk',
+          status: 'red',
+          emergency: true,
+          heartbeat: Date.now() - 3000,
+          defaultCycle: 75,
+          nextMaint: '2025-10-05',
+          lat: 28.632,
+          lng: 77.219,
+        },
+        {
+          id: 'S-203',
+          name: 'IIT Gate (Hauz Khas)',
+          status: 'amber',
+          emergency: false,
+          heartbeat: Date.now() - 40000,
+          defaultCycle: 80,
+          nextMaint: '2025-11-01',
+          lat: 28.545,
+          lng: 77.192,
+        },
+        {
+          id: 'S-204',
+          name: 'India Gate Circle',
+          status: 'green',
+          emergency: false,
+          heartbeat: Date.now() - 7000,
+          defaultCycle: 85,
+          nextMaint: '2025-10-18',
+          lat: 28.6129,
+          lng: 77.2295,
+        },
+      ];
+      const ambulances = [
+        {
+          id: 'AMB-21',
+          driver: 'R. Sharma',
+          hospital: 'AIIMS New Delhi',
+          contact: '+91 11 2658 8500',
+          status: 'On Route',
+          lat: 28.56,
+          lng: 77.206,
+        },
+        {
+          id: 'AMB-32',
+          driver: 'P. Gupta',
+          hospital: 'Safdarjung Hospital',
+          contact: '+91 11 2670 7444',
+          status: 'Available',
+          lat: 28.567,
+          lng: 77.208,
+        },
+      ];
+      const events = [
+        { ts: Date.now() - 180000, msg: 'Heartbeat OK from S-201' },
+        { ts: Date.now() - 170000, msg: 'AMB-21 departed AIIMS New Delhi' },
+        { ts: Date.now() - 120000, msg: 'Override requested at Rajiv Chowk' },
+        { ts: Date.now() - 90000, msg: 'S-202 switched to RED for priority' },
+        { ts: Date.now() - 20000, msg: 'AMB-21 approaching S-202' },
+      ];
+      let overrideActive = signals.some((s) => s.emergency);
+
+      // Utility
+      const fmtTime = (ts) => new Date(ts).toLocaleTimeString();
+      const fmtAgo = (ts) => {
+        const d = Date.now() - ts;
+        if (d < 60000) return `${Math.floor(d / 1000)}s ago`;
+        if (d < 3600000) return `${Math.floor(d / 60000)}m ago`;
+        return `${Math.floor(d / 3600000)}h ago`;
+      };
+      const kmDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+
+      // Simple hash router
+      const routes = {
+        '/': renderDashboard,
+        '/signals': renderSignals,
+        '/ambulances': renderAmbulances,
+        '/admin': renderAdmin,
+      };
+      function setRoute(path) {
+        window.location.hash = '#' + path;
+      }
+      function getRoute() {
+        const h = window.location.hash.replace('#', '') || '/';
+        return routes[h] ? h : '/';
+      }
+
+      // Sidebar nav active state
+      function updateNavActive(path) {
+        document.querySelectorAll('.nav-item').forEach((b) => {
+          b.classList.remove('nav-active');
+          if (b.dataset.route === path) b.classList.add('nav-active');
+        });
+      }
+
+      // Header dynamic bits
+      function updateHeaderState() {
+        const toast = document.getElementById('overrideToast');
+        const dot = document.getElementById('sidebarOverrideDot');
+        const text = document.getElementById('sidebarOverrideText');
+        const kpiStrip = document.getElementById('kpiStrip');
+        const route = getRoute();
+
+        document.getElementById('lastSync').textContent = fmtTime(Date.now());
+        if (overrideActive) {
+          toast.classList.remove('hidden');
+          dot.classList.remove('bg-white/30');
+          dot.classList.add('bg-[var(--ambulance-blue)]');
+          text.textContent = 'Active';
+        } else {
+          toast.classList.add('hidden');
+          dot.classList.add('bg-white/30');
+          dot.classList.remove('bg-[var(--ambulance-blue)]');
+          text.textContent = 'Idle';
+        }
+
+        // Show KPIs only on dashboard
+        kpiStrip.style.display = route === '/' ? 'grid' : 'none';
+        // Update KPI values
+        const onlineSignals = signals.filter(
+          (s) => Date.now() - s.heartbeat < 60000
+        ).length;
+        const overrides = signals.filter((s) => s.emergency).length;
+        document.getElementById('kpiAmbulances').textContent =
+          ambulances.length;
+        document.getElementById('kpiSignals').textContent = onlineSignals;
+        document.getElementById('kpiOverrides').textContent = overrides;
+
+        // Left live indicator near "Live Dashboard"
+        const liveDot = document.querySelector('.override-indicator');
+        if (liveDot) {
+          if (overrideActive) liveDot.classList.remove('hidden');
+          else liveDot.classList.add('hidden');
+        }
+      }
+
+      // Components (vanilla renderers)
+
+      function TrafficLightComp({ id, name, status, emergency, heartbeat }) {
+        const colorMap = { red: '#E74C3C', amber: '#F1C40F', green: '#2ECC71' };
+        const statusText =
+          {
+            red: 'STOP',
+            amber: 'READY',
+            green: 'GO',
+          }[status] || 'OFF';
+        const online = Date.now() - heartbeat < 60000;
+
+        // Create container
+        const card = document.createElement('div');
+        card.className = 'card p-4 flex flex-col justify-between gap-3';
+        if (emergency) card.classList.add('ring-ambulance');
+
+        const head = document.createElement('div');
+        head.className = 'flex items-center justify-between';
+        head.innerHTML = `
+        <div class="font-semibold">${name}</div>
+        <div class="text-xs ${
+          online ? 'badge badge-green' : 'badge badge-red'
+        }">${online ? 'Online' : 'Offline'}</div>
+      `;
+
+        // Bulbs
+        const bulbs = document.createElement('div');
+        bulbs.className = 'flex items-center gap-3';
+        const mkBulb = (clr, active) => {
+          const b = document.createElement('div');
+          b.className = 'w-8 h-8 rounded-full border border-black/10';
+          b.style.background = active ? clr : '#ffffff';
+          b.style.boxShadow = active ? `0 0 0 3px ${clr}22` : 'none';
+          if (active) b.classList.add('animate-glow');
+          b.style.setProperty('--glow-color', clr);
+          return b;
+        };
+        bulbs.append(
+          mkBulb(colorMap.red, status === 'red'),
+          mkBulb(colorMap.amber, status === 'amber'),
+          mkBulb(colorMap.green, status === 'green')
+        );
+
+        const info = document.createElement('div');
+        info.className =
+          'flex items-center justify-between text-xs text-slate-600';
+        const hb = fmtAgo(heartbeat);
+        info.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span class="font-semibold">${statusText}</span>
+          ${
+            emergency
+              ? '<span class="badge badge-blue">AMBULANCE PRIORITY</span>'
+              : ''
+          }
+        </div>
+        <div>Last heartbeat: ${hb}</div>
+      `;
+
+        card.append(head, bulbs, info);
+        return card;
+      }
+
+      // Dashboard Route
+      function renderDashboard(root) {
+        root.innerHTML = '';
+        // Top: Map
+        const mapWrap = document.createElement('div');
+mapWrap.className = 'card p-0 overflow-hidden';
+
+const mapPanel = document.createElement('div');
+mapPanel.className = 'map-tile h-[360px] relative';
+
+// Create the iframe for Delhi map
+const iframe = document.createElement('iframe');
+iframe.className = 'w-full h-full border-0';
+iframe.src = "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14021.79936066884!2d77.2090214!3d28.6139391!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390cfd8d301f05ed%3A0xd58d3a9345d7b7c7!2sDelhi%2C%20India!5e0!3m2!1sen!2sin!4v1695050000000!5m2!1sen!2sin";
+iframe.allowFullscreen = true;
+iframe.loading = 'lazy';
+iframe.referrerPolicy = 'no-referrer-when-downgrade';
+
+// Append iframe to mapPanel
+mapPanel.appendChild(iframe);
+
+// Append mapPanel to mapWrap
+mapWrap.appendChild(mapPanel);
+
+// Now you can append mapWrap to your container in the DOM
+document.getElementById('routerView').appendChild(mapWrap);
+
+
+        // Add markers (signals + ambulances)
+        const mapInner = document.createElement('div');
+        mapInner.className = 'absolute inset-0';
+        mapPanel.append(mapInner);
+
+        // Simple viewport scaling (fake coords to pixels)
+        const minLat = 37.77,
+          maxLat = 37.787,
+          minLng = -122.425,
+          maxLng = -122.41;
+        const toXY = (lat, lng) => {
+          const x = (lng - minLng) / (maxLng - minLng);
+          const y = 1 - (lat - minLat) / (maxLat - minLat);
+          return { x, y };
+        };
+
+        // Draw signals
+        signals.forEach((s) => {
+          const { x, y } = toXY(s.lat, s.lng);
+          const marker = document.createElement('div');
+          marker.className =
+            'absolute -translate-x-1/2 -translate-y-full flex flex-col items-center';
+          marker.style.left = x * 100 + '%';
+          marker.style.top = y * 100 + '%';
+          marker.innerHTML = `
+          <div class="bg-white rounded-md px-2 py-1 text-xs shadow">${
+            s.name
+          }</div>
+          <div class="mt-1 w-3.5 h-3.5 rounded-full ${
+            s.status === 'green'
+              ? 'bg-[var(--signal-green)]'
+              : s.status === 'amber'
+              ? 'bg-[var(--signal-amber)]'
+              : 'bg-[var(--signal-red)]'
+          } ${
+            s.emergency
+              ? 'ring-2 ring-[var(--ambulance-blue)] ring-offset-2 ring-offset-white'
+              : ''
+          }"></div>
+        `;
+          mapInner.append(marker);
+        });
+
+        // Draw ambulances + simple route hints
+        ambulances.forEach((a, idx) => {
+          const { x, y } = toXY(a.lat, a.lng);
+          const marker = document.createElement('div');
+          marker.className =
+            'absolute -translate-x-1/2 -translate-y-full flex flex-col items-center';
+          marker.style.left = x * 100 + '%';
+          marker.style.top = y * 100 + '%';
+          marker.innerHTML = `
+          <div class="bg-ambulance-blue text-white rounded-md px-2 py-1 text-xs shadow">${a.id}</div>
+          <div class="mt-1 w-3.5 h-3.5 rounded-full bg-[var(--ambulance-blue)] animate-pulse"></div>
+        `;
+          // Click to focus
+          marker.style.cursor = 'pointer';
+          marker.addEventListener('click', () => {
+            selectAmbulance(a.id);
+            setRoute('/ambulances');
+            route();
+          });
+          mapInner.append(marker);
+
+          // Draw a faint polyline approximation between two points
+          if (signals[idx]) {
+            const s = signals[idx];
+            const p1 = toXY(a.lat, a.lng);
+            const p2 = toXY(s.lat, s.lng);
+            const line = document.createElement('div');
+            line.className = 'absolute';
+            const x1 = p1.x * 100,
+              y1 = p1.y * 100,
+              x2 = p2.x * 100,
+              y2 = p2.y * 100;
+            const dx = x2 - x1,
+              dy = y2 - y1;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+            line.style.width = len + '%';
+            line.style.height = '2px';
+            line.style.left = x1 + '%';
+            line.style.top = y1 + '%';
+            line.style.transformOrigin = '0 0';
+            line.style.transform = `rotate(${angle}deg)`;
+            line.style.background = 'rgba(52,152,219,0.45)';
+            mapInner.append(line);
+          }
+        });
+
+        // Middle: Grid + Feed
+        const mid = document.createElement('div');
+        mid.className = 'mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6';
+
+        const gridWrap = document.createElement('div');
+        gridWrap.className = 'lg:col-span-2 card p-4';
+        const gridHead = document.createElement('div');
+        gridHead.className = 'flex items-center justify-between mb-3';
+        gridHead.innerHTML = `
+        <div class="font-bold">Intersections</div>
+        <button id="toggleOverride" class="px-3 py-1.5 rounded-lg bg-ambulance-blue text-white hover:brightness-110 text-sm">Toggle Override Demo</button>
+      `;
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4';
+        signals.forEach((s) => {
+          grid.append(
+            TrafficLightComp({
+              id: s.id,
+              name: s.name,
+              status: s.status,
+              emergency: s.emergency,
+              heartbeat: s.heartbeat,
+            })
+          );
+        });
+        gridWrap.append(gridHead, grid);
+
+        const feedWrap = document.createElement('div');
+        feedWrap.className = 'card p-4';
+        feedWrap.innerHTML = `
+        <div class="font-bold mb-3">Live Event Feed</div>
+        <div id="feed" class="max-h-[320px] overflow-auto scroll-smooth space-y-2"></div>
+      `;
+        const feed = feedWrap.querySelector('#feed');
+        events
+          .slice()
+          .reverse()
+          .forEach((e) => {
+            const row = document.createElement('div');
+            row.className =
+              'flex items-start gap-3 bg-slate-50 border border-black/5 rounded-lg p-3';
+            row.innerHTML = `
+          <div class="w-2 h-2 mt-1 rounded-full ${
+            /override|priority|switched|approaching/i.test(e.msg)
+              ? 'bg-[var(--ambulance-blue)]'
+              : 'bg-slate-300'
+          }"></div>
+          <div class="flex-1">
+            <div class="text-xs text-slate-500">${fmtTime(e.ts)}</div>
+            <div class="text-sm">${e.msg}</div>
+          </div>
+        `;
+            feed.append(row);
+          });
+
+        mid.append(gridWrap, feedWrap);
+
+        // Bottom: Mini admin
+        const adminMini = document.createElement('div');
+        adminMini.className = 'mt-6 grid grid-cols-1 md:grid-cols-3 gap-6';
+        const mkUserCard = (u) => `
+        <div class="card p-4 flex items-center gap-3">
+          <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-xl">👤</div>
+          <div class="flex-1">
+            <div class="font-semibold">${u.name}</div>
+            <div class="text-xs text-slate-500">Role: ${u.role}</div>
+          </div>
+          <div class="badge ${
+            u.role === 'Admin' ? 'badge-amber' : 'badge-green'
+          }">${u.role}</div>
+        </div>`;
+        adminMini.innerHTML = [
+          { name: 'Alex Morgan', role: 'Admin' },
+          { name: 'Priya Patel', role: 'Viewer' },
+          { name: 'Chris Wong', role: 'Viewer' },
+        ]
+          .map(mkUserCard)
+          .join('');
+
+        root.append(mapWrap, mid, adminMini);
+
+        // Actions
+        gridHead
+          .querySelector('#toggleOverride')
+          .addEventListener('click', () => {
+            // Flip one signal emergency flag and status for demo
+            const idx = signals.findIndex((s) => s.id === 'S-102');
+            if (idx >= 0) {
+              signals[idx].emergency = !signals[idx].emergency;
+              signals[idx].status = signals[idx].emergency ? 'red' : 'green';
+              overrideActive = signals.some((s) => s.emergency);
+              renderDashboard(root);
+              updateHeaderState();
+              events.push({
+                ts: Date.now(),
+                msg: signals[idx].emergency
+                  ? 'Override activated at Market & 2nd'
+                  : 'Override cleared at Market & 2nd',
+              });
+            }
+          });
+      }
+
+      // Signals Route
+      function renderSignals(root) {
+        root.innerHTML = '';
+        const wrap = document.createElement('div');
+        wrap.className = 'space-y-6';
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        header.innerHTML = `
+        <div class="text-xl font-extrabold">Signals Management</div>
+        <div class="text-sm text-slate-600">Manage cycles, maintenance and map view</div>
+      `;
+
+        const table = document.createElement('div');
+        table.className = 'card overflow-hidden';
+        table.innerHTML = `
+        <div class="overflow-x-auto">
+          <table class="min-w-full">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+              <tr>
+                <th class="text-left p-3">Signal ID</th>
+                <th class="text-left p-3">Location</th>
+                <th class="text-left p-3">Default Cycle (sec)</th>
+                <th class="text-left p-3">Current Status</th>
+                <th class="text-left p-3">Last Heartbeat</th>
+                <th class="text-left p-3">Next Maintenance</th>
+                <th class="text-left p-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="signalsRows" class="text-sm"></tbody>
+          </table>
+        </div>
+      `;
+
+        const tbody = table.querySelector('#signalsRows');
+        signals.forEach((s) => {
+          const tr = document.createElement('tr');
+          tr.className = 'border-t border-slate-100 hover:bg-slate-50';
+          const online = Date.now() - s.heartbeat < 60000;
+          const badge = s.emergency
+            ? '<span class="badge badge-blue">OVERRIDE</span>'
+            : online
+            ? '<span class="badge badge-green">ACTIVE</span>'
+            : '<span class="badge badge-red">OFFLINE</span>';
+          tr.innerHTML = `
+          <td class="p-3 font-semibold">${s.id}</td>
+          <td class="p-3">${s.name}</td>
+          <td class="p-3">${s.defaultCycle}</td>
+          <td class="p-3 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full ${
+              s.status === 'green'
+                ? 'bg-[var(--signal-green)]'
+                : s.status === 'amber'
+                ? 'bg-[var(--signal-amber)]'
+                : 'bg-[var(--signal-red)]'
+            } ${
+            s.emergency
+              ? 'ring-2 ring-[var(--ambulance-blue)] ring-offset-2 ring-offset-white'
+              : ''
+          }"></span>
+            <span class="">${s.status.toUpperCase()}</span>
+            ${badge}
+          </td>
+          <td class="p-3">${fmtAgo(s.heartbeat)}</td>
+          <td class="p-3">${s.nextMaint}</td>
+          <td class="p-3">
+            <div class="flex gap-2">
+              <button class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs" data-map="${
+                s.id
+              }">View on map</button>
+              <button class="px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs" data-edit="${
+                s.id
+              }">Edit cycle</button>
+              <button class="px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 text-xs" data-maint="${
+                s.id
+              }">Schedule</button>
+            </div>
+          </td>
+        `;
+          tbody.append(tr);
+        });
+
+        // Small map preview
+        const map = document.createElement('div');
+map.className = 'card p-4';
+map.innerHTML = `
+  <div class="flex items-center justify-between mb-3">
+    <div class="font-bold">Map Preview</div>
+    <div class="text-xs text-slate-500">Click "View on map" to focus</div>
+  </div>
+  <div id="signalsMap" class="map-tile h-[360px] relative rounded-lg overflow-hidden"></div>
+`;
+
+const signalsMap = map.querySelector('#signalsMap');
+
+// Insert Google Maps iframe for Delhi
+const iframe = document.createElement('iframe');
+iframe.className = 'w-full h-full border-0';
+iframe.src = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14021.79936066884!2d77.2090214!3d28.6139391!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390cfd8d301f05ed%3A0xd58d3a9345d7b7c7!2sDelhi%2C%20India!5e0!3m2!1sen!2sin!4v1695050000000!5m2!1sen!2sin';
+iframe.allowFullscreen = true;
+iframe.loading = 'lazy';
+iframe.referrerPolicy = 'no-referrer-when-downgrade';
+
+signalsMap.appendChild(iframe);
+
+// Append to your dashboard container
+document.getElementById('routerView').appendChild(map);
+
+
+        wrap.append(header, table, map);
+        root.append(wrap);
+
+        // Actions
+        table.querySelectorAll('[data-map]').forEach((b) =>
+          b.addEventListener('click', () => {
+            drawSignalsMap(b.getAttribute('data-map'));
+          })
+        );
+
+        table.querySelectorAll('[data-edit]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const id = b.getAttribute('data-edit');
+            openModal({
+              title: `Edit Cycle — ${id}`,
+              body: `
+            <div class="space-y-4">
+              <label class="block">
+                <div class="text-sm font-semibold mb-1">Default Cycle (seconds)</div>
+                <input type="number" id="editCycleInput" class="w-full rounded-lg border border-slate-200 px-3 py-2" min="30" max="180" step="5" value="${
+                  signals.find((s) => s.id === id).defaultCycle
+                }">
+              </label>
+              <div class="bg-blue-50 border border-blue-100 text-blue-700 text-xs rounded-lg p-3">
+                This demo will “save” to a mock Firebase and update the table immediately.
+              </div>
+            </div>
+          `,
+              onSave: () => {
+                const val = parseInt(
+                  document.getElementById('editCycleInput').value || '0',
+                  10
+                );
+                const i = signals.findIndex((s) => s.id === id);
+                if (i >= 0 && val >= 30) {
+                  signals[i].defaultCycle = val;
+                  // Mock Firebase write
+                  events.push({
+                    ts: Date.now(),
+                    msg: `Cycle updated for ${id} → ${val}s`,
+                  });
+                }
+                renderSignals(root);
+                updateHeaderState();
+              },
+            });
+          })
+        );
+
+        table.querySelectorAll('[data-maint]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const id = b.getAttribute('data-maint');
+            openModal({
+              title: `Schedule Maintenance — ${id}`,
+              body: `
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label class="block">
+                <div class="text-sm font-semibold mb-1">Date</div>
+                <input type="date" id="maintDate" class="w-full rounded-lg border border-slate-200 px-3 py-2">
+              </label>
+              <label class="block">
+                <div class="text-sm font-semibold mb-1">Time</div>
+                <input type="time" id="maintTime" class="w-full rounded-lg border border-slate-200 px-3 py-2">
+              </label>
+            </div>
+            <div class="mt-3 text-xs text-slate-600">A maintenance badge (AMBER) will be shown.</div>
+          `,
+              onSave: () => {
+                const date = document.getElementById('maintDate').value;
+                const time = document.getElementById('maintTime').value;
+                const i = signals.findIndex((s) => s.id === id);
+                if (i >= 0 && date) {
+                  signals[i].nextMaint = date;
+                  events.push({
+                    ts: Date.now(),
+                    msg: `Maintenance scheduled for ${id} at ${date} ${
+                      time || ''
+                    }`,
+                  });
+                }
+                renderSignals(root);
+                updateHeaderState();
+              },
+            });
+          })
+        );
+      }
+
+      // Ambulances Route
+      let selectedAmb = null;
+      function selectAmbulance(id) {
+        selectedAmb = id;
+      }
+      function renderAmbulances(root) {
+        root.innerHTML = '';
+        const wrap = document.createElement('div');
+        wrap.className = 'space-y-6';
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        header.innerHTML = `
+        <div class="text-xl font-extrabold">Ambulance Tracking</div>
+        <button id="simulateETA" class="px-3 py-1.5 rounded-lg bg-ambulance-blue text-white hover:brightness-110 text-sm">
+          Simulate ETA Update
+        </button>
+      `;
+
+        // Registry list
+        const list = document.createElement('div');
+        list.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+        ambulances.forEach((a) => {
+          const card = document.createElement('div');
+          card.className =
+            'card p-4 flex items-center gap-4 cursor-pointer hover:shadow-lg transition';
+          card.innerHTML = `
+          <div class="w-12 h-12 rounded-full bg-ambulance-blue/10 text-ambulance-blue flex items-center justify-center text-xl">🚑</div>
+          <div class="flex-1">
+            <div class="font-semibold">${a.id} — ${a.driver}</div>
+            <div class="text-xs text-slate-500">${a.hospital} • ${
+            a.contact
+          }</div>
+          </div>
+          <div class="badge ${
+            a.status === 'On Route' ? 'badge-blue' : 'badge-green'
+          }">${a.status}</div>
+        `;
+          card.addEventListener('click', () => {
+            selectAmbulance(a.id);
+            renderAmbulances(root);
+          });
+          list.append(card);
+        });
+
+        // Map + Detail
+        const detail = document.createElement('div');
+        detail.className = 'grid grid-cols-1 lg:grid-cols-3 gap-6';
+
+        const map = document.createElement('div');
+        map.className = 'lg:col-span-2 card p-4';
+        map.innerHTML = `
+        <div class="flex items-center justify-between mb-3">
+          <div class="font-bold">Live Map</div>
+          <div id="eta" class="text-sm text-slate-600">ETA: —</div>
+        </div>
+        <div id="ambMap" class="map-tile h-[320px] rounded-lg relative"></div>
+      `;
+
+        const sidebar = document.createElement('div');
+        sidebar.className = 'card p-4';
+        sidebar.innerHTML = `
+        <div class="font-bold mb-3">History</div>
+        <div id="ambHistory" class="space-y-2 max-h-[320px] overflow-auto"></div>
+      `;
+
+        const ambMap = map.querySelector('#ambMap');
+        const etaEl = map.querySelector('#eta');
+        const history = sidebar.querySelector('#ambHistory');
+
+        // selected or default
+        const focusAmb =
+          ambulances.find((a) => a.id === selectedAmb) || ambulances[0];
+        selectedAmb = focusAmb.id;
+
+        // Fake coords transform
+        const minLat = 37.77,
+          maxLat = 37.787,
+          minLng = -122.425,
+          maxLng = -122.41;
+        const toXY = (lat, lng) => {
+          const x = (lng - minLng) / (maxLng - minLng);
+          const y = 1 - (lat - minLat) / (maxLat - minLat);
+          return { x, y };
+        };
+
+        // Route to nearest emergency or first signal
+        const dest = signals.find((s) => s.emergency) || signals[0];
+        const dKm = kmDistance(focusAmb.lat, focusAmb.lng, dest.lat, dest.lng);
+        const etaMin = Math.max(1, Math.round((dKm / 40) * 60)); // assume 40km/h city avg with siren
+        etaEl.textContent = `ETA: ${etaMin} min to ${dest.name}`;
+
+        // Draw route line
+        const p1 = toXY(focusAmb.lat, focusAmb.lng);
+        const p2 = toXY(dest.lat, dest.lng);
+        const x1 = p1.x * 100,
+          y1 = p1.y * 100,
+          x2 = p2.x * 100,
+          y2 = p2.y * 100;
+        const dx = x2 - x1,
+          dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+        const line = document.createElement('div');
+        line.className = 'absolute';
+        line.style.width = len + '%';
+        line.style.height = '3px';
+        line.style.left = x1 + '%';
+        line.style.top = y1 + '%';
+        line.style.transformOrigin = '0 0';
+        line.style.transform = `rotate(${angle}deg)`;
+        line.style.background =
+          'linear-gradient(90deg, rgba(52,152,219,0.6), rgba(46,204,113,0.6))';
+        ambMap.append(line);
+
+        // Place endpoints
+        const aMarker = document.createElement('div');
+        aMarker.className =
+          'absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2';
+        aMarker.style.left = x1 + '%';
+        aMarker.style.top = y1 + '%';
+        aMarker.innerHTML = `<div class="route-dot"></div><div class="text-xs bg-white rounded px-2 py-1 shadow">${focusAmb.id}</div>`;
+        ambMap.append(aMarker);
+
+        const dMarker = document.createElement('div');
+        dMarker.className =
+          'absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2';
+        dMarker.style.left = x2 + '%';
+        dMarker.style.top = y2 + '%';
+        dMarker.innerHTML = `<div class="route-dot dot-${
+          dest.status === 'green'
+            ? 'green'
+            : dest.status === 'red'
+            ? 'red'
+            : 'amber'
+        }"></div><div class="text-xs bg-white rounded px-2 py-1 shadow">${
+          dest.name
+        }</div>`;
+        ambMap.append(dMarker);
+
+        // History log (mock)
+        const mockHistory = [
+          {
+            ts: Date.now() - 3600_000,
+            msg: `${focusAmb.id} cleared override at ${signals[1].name}`,
+          },
+          {
+            ts: Date.now() - 2800_000,
+            msg: `${focusAmb.id} passed ${signals[0].name}`,
+          },
+          {
+            ts: Date.now() - 120_000,
+            msg: `${focusAmb.id} requested priority at ${signals[1].name}`,
+          },
+        ];
+        mockHistory.forEach((e) => {
+          const row = document.createElement('div');
+          row.className = 'bg-slate-50 border border-black/5 rounded-lg p-3';
+          row.innerHTML = `<div class="text-xs text-slate-500">${fmtTime(
+            e.ts
+          )}</div><div class="text-sm">${e.msg}</div>`;
+          history.append(row);
+        });
+
+        wrap.append(header, list, detail);
+        detail.append(map, sidebar);
+        root.append(wrap);
+
+        document.getElementById('simulateETA').addEventListener('click', () => {
+          // move ambulance slightly closer for demo
+          const i = ambulances.findIndex((a) => a.id === selectedAmb);
+          if (i >= 0) {
+            ambulances[i].lat = (ambulances[i].lat + dest.lat) / 2;
+            ambulances[i].lng = (ambulances[i].lng + dest.lng) / 2;
+            events.push({
+              ts: Date.now(),
+              msg: `${selectedAmb} position updated (sim)`,
+            });
+            renderAmbulances(root);
+            updateHeaderState();
+          }
+        });
+      }
+
+      // Admin Route
+      const users = [
+        { id: 'U-1', name: 'Alex Morgan', role: 'Admin' },
+        { id: 'U-2', name: 'Priya Patel', role: 'Viewer' },
+      ];
+      const apiKeys = [
+        {
+          id: 'K-1',
+          name: 'Public Map Key',
+          value: 'pk_live_****************abcd',
+          created: '2025-08-12',
+        },
+        {
+          id: 'K-2',
+          name: 'Analytics',
+          value: 'an_live_****************zz99',
+          created: '2025-08-18',
+        },
+      ];
+      function renderAdmin(root) {
+        root.innerHTML = '';
+        const wrap = document.createElement('div');
+        wrap.className = 'space-y-6';
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        header.innerHTML = `
+        <div class="text-xl font-extrabold">Admin Settings</div>
+        <div class="text-sm text-slate-600">User roles, API keys, environment</div>
+      `;
+
+        // Users
+        const usersCard = document.createElement('div');
+        usersCard.className = 'card';
+        usersCard.innerHTML = `
+        <div class="p-4 border-b border-black/5 flex items-center justify-between">
+          <div class="font-bold">User Management</div>
+          <button id="addUser" class="px-3 py-1.5 rounded-lg bg-signal-green text-white hover:brightness-110 text-sm">Create User</button>
+        </div>
+        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4" id="usersList"></div>
+      `;
+
+        const usersList = usersCard.querySelector('#usersList');
+        const renderUsers = () => {
+          usersList.innerHTML = '';
+          users.forEach((u) => {
+            const card = document.createElement('div');
+            card.className =
+              'p-4 border border-black/5 rounded-xl flex items-center justify-between';
+            card.innerHTML = `
+            <div>
+              <div class="font-semibold">${u.name}</div>
+              <div class="text-xs text-slate-500">ID: ${u.id}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <select data-role="${
+                u.id
+              }" class="rounded-lg border border-slate-200 px-2 py-1 text-sm">
+                <option ${u.role === 'Admin' ? 'selected' : ''}>Admin</option>
+                <option ${u.role === 'Viewer' ? 'selected' : ''}>Viewer</option>
+              </select>
+              <button data-del="${
+                u.id
+              }" class="px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 text-xs">Delete</button>
+            </div>
+          `;
+            usersList.append(card);
+          });
+
+          // role change
+          usersList.querySelectorAll('select[data-role]').forEach((sel) => {
+            sel.addEventListener('change', () => {
+              const id = sel.getAttribute('data-role');
+              const i = users.findIndex((x) => x.id === id);
+              if (i >= 0) users[i].role = sel.value;
+            });
+          });
+          // delete
+          usersList.querySelectorAll('[data-del]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const id = btn.getAttribute('data-del');
+              const i = users.findIndex((x) => x.id === id);
+              if (i >= 0) users.splice(i, 1);
+              renderUsers();
+            });
+          });
+        };
+        renderUsers();
+
+        usersCard.querySelector('#addUser').addEventListener('click', () => {
+          openModal({
+            title: 'Create User',
+            body: `
+            <div class="space-y-4">
+              <label class="block">
+                <div class="text-sm font-semibold mb-1">Name</div>
+                <input type="text" id="newUserName" class="w-full rounded-lg border border-slate-200 px-3 py-2" placeholder="Full name">
+              </label>
+              <label class="block">
+                <div class="text-sm font-semibold mb-1">Role</div>
+                <select id="newUserRole" class="w-full rounded-lg border border-slate-200 px-3 py-2">
+                  <option>Viewer</option>
+                  <option>Admin</option>
+                </select>
+              </label>
+            </div>
+          `,
+            onSave: () => {
+              const name = document.getElementById('newUserName').value.trim();
+              const role = document.getElementById('newUserRole').value;
+              if (name) {
+                users.push({
+                  id: 'U-' + Math.floor(Math.random() * 900 + 100),
+                  name,
+                  role,
+                });
+                renderUsers();
+              }
+            },
+          });
+        });
+
+        // API Keys
+        // const keysCard = document.createElement('div');
+        // keysCard.className = 'card';
+        // keysCard.innerHTML = `
+        //   <div class="p-4 border-b border-black/5 flex items-center justify-between">
+        //     <div class="font-bold">API Keys</div>
+        //     <button id="regenAny" class="px-3 py-1.5 rounded-lg bg-amber-500 text-white hover:brightness-110 text-sm">Regenerate Any</button>
+        //   </div>
+        //   <div class="p-4 overflow-x-auto">
+        //     <table class="min-w-full">
+        //       <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+        //         <tr>
+        //           <th class="text-left p-3">Name</th>
+        //           <th class="text-left p-3">Key</th>
+        //           <th class="text-left p-3">Created</th>
+        //           <th class="text-left p-3">Actions</th>
+        //         </tr>
+        //       </thead>
+        //       <tbody id="keysRows" class="text-sm"></tbody>
+        //     </table>
+        //   </div>
+        // `;
+        // const keysRows = keysCard.querySelector('#keysRows');
+        // const renderKeys = () => {
+        //   keysRows.innerHTML = '';
+        //   apiKeys.forEach(k => {
+        //     const tr = document.createElement('tr');
+        //     tr.className = 'border-t border-slate-100';
+        //     tr.innerHTML = `
+        //       <td class="p-3 font-semibold">${k.name}</td>
+        //       <td class="p-3 font-mono">${k.value}</td>
+        //       <td class="p-3">${k.created}</td>
+        //       <td class="p-3">
+        //         <div class="flex gap-2">
+        //           <button class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs" data-reveal="${k.id}">Reveal</button>
+        //           <button class="px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 text-xs" data-revoke="${k.id}">Revoke</button>
+        //           <button class="px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs" data-regenerate="${k.id}">Regenerate</button>
+        //         </div>
+        //       </td>
+        //     `;
+        //     keysRows.append(tr);
+        //   });
+
+        //   keysRows.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('click', () => {
+        //     const id = b.getAttribute('data-reveal');
+        //     const i = apiKeys.findIndex(x => x.id === id);
+        //     if (i>=0) {
+        //       openModal({
+        //         title: 'Masked Key',
+        //         body: `<div class="text-sm">This is a masked demo key. Never commit real secrets.<div class="mt-2 p-2 bg-slate-100 rounded font-mono">${apiKeys[i].value}</div></div>`,
+        //         onSave: () => closeModal()
+        //       });
+        //     }
+        //   }));
+        //   keysRows.querySelectorAll('[data-revoke]').forEach(b => b.addEventListener('click', () => {
+        //     const id = b.getAttribute('data-revoke');
+        //     const i = apiKeys.findIndex(x => x.id === id);
+        //     if (i>=0) apiKeys.splice(i,1);
+        //     renderKeys();
+        //   }));
+        //   keysRows.querySelectorAll('[data-regenerate]').forEach(b => b.addEventListener('click', () => {
+        //     const id = b.getAttribute('data-regenerate');
+        //     const i = apiKeys.findIndex(x => x.id === id);
+        //     if (i>=0) {
+        //       apiKeys[i].value = apiKeys[i].value.replace(/\*+/, '****************') + Math.floor(Math.random()*90+10);
+        //       apiKeys[i].created = new Date().toISOString().slice(0,10);
+        //     }
+        //     renderKeys();
+        //   }));
+        // };
+        // renderKeys();
+
+        // keysCard.querySelector('#regenAny').addEventListener('click', () => {
+        //   if (apiKeys[0]) {
+        //     apiKeys[0].value = 'pk_live_****************' + Math.random().toString(36).slice(2,6);
+        //     apiKeys[0].created = new Date().toISOString().slice(0,10);
+        //     renderKeys();
+        //   }
+        // });
+
+        // Environment config (placeholders only)
+        // const envCard = document.createElement('div');
+        // envCard.className = 'card p-4';
+        // envCard.innerHTML = `
+        //   <div class="font-bold mb-3">Environment Configuration</div>
+        //   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        //     <label class="block">
+        //       <div class="text-sm font-semibold mb-1">Firebase API Key</div>
+        //       <input type="password" value="••••••••••••••••" disabled class="w-full rounded-lg border border-slate-200 px-3 py-2 bg-slate-50">
+        //       <div class="text-xs text-slate-500 mt-1">Placeholder only. Do not commit real secrets.</div>
+        //     </label>
+        //     <label class="block">
+        //       <div class="text-sm font-semibold mb-1">Realtime DB URL</div>
+        //       <input type="text" value="https://your-demo.firebaseio.com" disabled class="w-full rounded-lg border border-slate-200 px-3 py-2 bg-slate-50">
+        //     </label>
+        //   </div>
+        // `;
+        const logsCard = document.createElement('div');
+        logsCard.className = 'card';
+        logsCard.innerHTML = `
+  <div class="p-4 border-b border-black/5 flex items-center justify-between">
+    <div class="font-bold">User Activity Logs</div>
+    <div class="flex gap-2">
+      <select id="logUserFilter" class="rounded-lg border border-slate-200 px-2 py-1 text-sm">
+        <option value="">All Users</option>
+        <!-- Dynamically add user options -->
+      </select>
+      <select id="logTypeFilter" class="rounded-lg border border-slate-200 px-2 py-1 text-sm">
+        <option value="">All Actions</option>
+        <option value="login">Login</option>
+        <option value="edit">Edit</option>
+        <option value="delete">Delete</option>
+      </select>
+      <input type="date" id="logDateFilter" class="rounded-lg border border-slate-200 px-2 py-1 text-sm" />
+    </div>
+  </div>
+  <div class="p-4 max-h-[320px] overflow-auto" id="logsList"></div>
+`;
+        const envCard = document.createElement('div');
+        envCard.className = 'card p-4';
+        envCard.innerHTML = `
+    <div class="font-bold mb-3">Environment Configuration</div>
+    <div class="text-slate-500 text-sm">No external database or API keys configured in this demo.</div>
+  `;
+  const profileCard = document.createElement('div');
+profileCard.className = 'card';
+profileCard.innerHTML = `
+  <div class="p-4 border-b border-black/5 font-bold">Profile Settings</div>
+  <div class="p-4 space-y-4">
+    <input id="adminEmail" type="email" placeholder="New Email"
+           class="w-full border rounded px-3 py-2" />
+    <input id="adminPass" type="password" placeholder="New Password"
+           class="w-full border rounded px-3 py-2" />
+    <button id="saveProfile"
+            class="bg-ambulance-blue text-white px-4 py-2 rounded hover:brightness-110">
+      Update
+    </button>
+  </div>
+`;
+profileCard.querySelector('#saveProfile').addEventListener('click', () => {
+  const emailInput = document.getElementById('adminEmail');
+  const passInput  = document.getElementById('adminPass');
+  const email = emailInput.value.trim();
+  const pass  = passInput.value.trim();
+
+  if (email || pass) {
+    // Show confirmation popup
+    alert(`Profile updated${
+      email ? `\nNew Email: ${email}` : ''
+    }${pass ? `\nPassword changed` : ''}`);
+
+    // Reset inputs
+    emailInput.value = '';
+    passInput.value = '';
+  } else {
+    alert('Please enter at least one field to update.');
+  }
+});
+// --- Download / Backup Card ---
+// const backupCard = document.createElement('div');
+// backupCard.className = 'card';
+// backupCard.innerHTML = `
+//   <div class="p-4 border-b border-black/5 font-bold">Backup & Export</div>
+//   <div class="p-4">
+//     <button id="exportData"
+//       class="px-4 py-2 bg-signal-green text-white rounded hover:brightness-110">
+//       Download Full JSON Backup
+//     </button>
+//   </div>
+// `;
+
+// --- Audit Logs Card (mock) ---
+const auditCard = document.createElement('div');
+auditCard.className = 'card';
+auditCard.innerHTML = `
+  <div class="p-4 border-b border-black/5 font-bold">Audit Logs</div>
+  <div id="auditList" class="p-4 space-y-2 text-sm"></div>
+`;
+const auditList = auditCard.querySelector('#auditList');
+const auditLogs = [
+  {ts: Date.now()-300000, msg:'User Alex changed Priya to Admin'},
+  {ts: Date.now()-180000, msg:'API key regenerated'},
+];
+auditLogs.forEach(l=>{
+  const row = document.createElement('div');
+  row.className = 'bg-slate-50 border border-black/5 rounded-lg p-3 flex justify-between';
+  row.innerHTML = `<span>${l.msg}</span><span class="text-slate-500">${fmtTime(l.ts)}</span>`;
+  auditList.append(row);
+});
+// --- Theme Toggle Card ---
+// const themeCard = document.createElement('div');
+// themeCard.className = 'card';
+// themeCard.innerHTML = `
+//   <div class="p-4 border-b border-black/5 font-bold flex items-center justify-between">
+//     <span>Theme</span>
+//     <label class="inline-flex items-center cursor-pointer">
+//       <span class="mr-2 text-sm text-slate-600">Light</span>
+//       <input id="themeToggle" type="checkbox" class="sr-only">
+//       <div class="w-11 h-6 bg-slate-300 rounded-full p-1 flex items-center transition">
+//         <div class="dot w-4 h-4 bg-white rounded-full shadow transform transition"></div>
+//       </div>
+//       <span class="ml-2 text-sm text-slate-600">Dark</span>
+//     </label>
+//   </div>
+// `;
+
+// --- Notification Preferences ---
+const notifyCard = document.createElement('div');
+notifyCard.className = 'card';
+notifyCard.innerHTML = `
+  <div class="p-4 border-b border-black/5 font-bold">Notification Preferences</div>
+  <div class="p-4 space-y-2 text-sm">
+    <label class="flex items-center gap-2">
+      <input type="checkbox" id="notifEmail" class="w-4 h-4"> Email Alerts
+    </label>
+    <label class="flex items-center gap-2">
+      <input type="checkbox" id="notifSMS" class="w-4 h-4"> SMS Alerts
+    </label>
+    <label class="flex items-center gap-2">
+      <input type="checkbox" id="notifPush" class="w-4 h-4"> Web Push Alerts
+    </label>
+    <button id="saveNotifs" class="mt-3 bg-ambulance-blue text-white px-4 py-2 rounded hover:brightness-110">
+      Save Preferences
+    </button>
+  </div>
+`;
+notifyCard.querySelector('#saveNotifs').addEventListener('click', () => {
+  const emailChk = document.getElementById('notifEmail');
+  const smsChk   = document.getElementById('notifSMS');
+  const pushChk  = document.getElementById('notifPush');
+
+  // Save the current preference values (demo)
+  const prefs = {
+    email: emailChk.checked,
+    sms:   smsChk.checked,
+    push:  pushChk.checked,
+  };
+
+  // Popup confirmation
+  alert('Notification preferences saved: ' + JSON.stringify(prefs));
+
+  // Reset all checkboxes
+  emailChk.checked = false;
+  smsChk.checked   = false;
+  pushChk.checked  = false;
+});
+// --- System Health Panel ---
+// const healthCard = document.createElement('div');
+// healthCard.className = 'card';
+// healthCard.innerHTML = `
+//   <div class="p-4 border-b border-black/5 font-bold">System Health</div>
+//   <div class="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+//     <div>
+//       <div class="font-semibold">Server Uptime</div>
+//       <div id="uptime" class="text-slate-600">--</div>
+//     </div>
+//     <div>
+//       <div class="font-semibold">Database</div>
+//       <div id="dbStatus" class="text-green-600 font-medium">Connected</div>
+//     </div>
+//     <div>
+//       <div class="font-semibold">API Latency</div>
+//       <div id="apiLatency" class="text-slate-600">-- ms</div>
+//     </div>
+//   </div>
+// `;
+
+
+// attach to page (add after existing cards)
+
+        wrap.append(header, usersCard, logsCard, notifyCard, profileCard, auditCard, envCard);
+        root.append(wrap);
+
+      }
+
+      // Modal helpers
+      function openModal({ title, body, onSave }) {
+        const backdrop = document.getElementById('modalBackdrop');
+        const panel = document.getElementById('modalPanel');
+        document.getElementById('modalTitle').textContent = title;
+        document.getElementById('modalBody').innerHTML = body;
+        backdrop.classList.remove('hidden');
+        backdrop.classList.add('flex');
+        requestAnimationFrame(() => {
+          panel.classList.remove('translate-y-6', 'opacity-0');
+          panel.classList.add('translate-y-0', 'opacity-100');
+        });
+        const save = () => {
+          onSave?.();
+          closeModal();
+        };
+        document.getElementById('modalSave').onclick = save;
+        document.getElementById('modalCancel').onclick = closeModal;
+        document.getElementById('modalClose').onclick = closeModal;
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) closeModal();
+        });
+      }
+      function closeModal() {
+        const backdrop = document.getElementById('modalBackdrop');
+        const panel = document.getElementById('modalPanel');
+        panel.classList.add('translate-y-6', 'opacity-0');
+        setTimeout(() => {
+          backdrop.classList.add('hidden');
+          backdrop.classList.remove('flex');
+        }, 150);
+      }
+
+      // Router controller
+      function route() {
+        const path = getRoute();
+        const view = document.getElementById('routerView');
+        updateNavActive(path);
+        if (routes[path]) routes[path](view);
+        updateHeaderState();
+      }
+
+      // Sidebar nav clicks
+      document.querySelectorAll('button[data-route]').forEach((btn) => {
+        btn.addEventListener('click', () => setRoute(btn.dataset.route));
+      });
+
+      window.addEventListener('hashchange', route);
+
+      // Initial
+      if (!window.location.hash) setRoute('/');
+      route();
+
+      // Periodic heartbeat update demo
+      setInterval(() => {
+        // Random signal heartbeat
+        const idx = Math.floor(Math.random() * signals.length);
+        signals[idx].heartbeat = Date.now();
+        updateHeaderState();
+        // Light random status animation
+        const st = ['red', 'amber', 'green'][Math.floor(Math.random() * 3)];
+        signals[idx].status = st;
+        if (getRoute() === '/') route(); // rerender simple parts
+      }, 7000);
+    </script>
+    <script>
+      (function () {
+        function c() {
+          var b = a.contentDocument || a.contentWindow.document;
+          if (b) {
+            var d = b.createElement('script');
+            d.innerHTML =
+              "window.__CF$cv$params={r:'97fa2e2bc74e8e81',t:'MTc1Nzk2MDg3MC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";
+            b.getElementsByTagName('head')[0].appendChild(d);
+          }
+        }
+        if (document.body) {
+          var a = document.createElement('iframe');
+          a.height = 1;
+          a.width = 1;
+          a.style.position = 'absolute';
+          a.style.top = 0;
+          a.style.left = 0;
+          a.style.border = 'none';
+          a.style.visibility = 'hidden';
+          document.body.appendChild(a);
+          if ('loading' !== document.readyState) c();
+          else if (window.addEventListener)
+            document.addEventListener('DOMContentLoaded', c);
+          else {
+            var e = document.onreadystatechange || function () {};
+            document.onreadystatechange = function (b) {
+              e(b);
+              'loading' !== document.readyState &&
+                ((document.onreadystatechange = e), c());
+            };
+          }
+        }
+      })();
+    </script>
+  </body>
+</html
